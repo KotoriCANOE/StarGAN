@@ -52,7 +52,7 @@ class DataBase:
                 args.__setattr__(name, value)
         def argchoose(name, cond, tv, fv):
             argdefault(name, tv if cond else fv)
-        argchoose('batch_size', args.test, 12, 12)
+        argchoose('batch_size', args.test, 16, 16)
 
     def get_files_packed(self):
         data_list = os.listdir(self.dataset)
@@ -125,6 +125,8 @@ class DataBase:
         crop_b = sh - th - crop_t
         crop_b = -crop_b if crop_b > 0 else None
         data = data[:, crop_t:crop_b, crop_l:crop_r]
+        # normalization
+        data = data.astype(np.float32) * (2 / 255) - 1
         # random data manipulation
         # data = DataPP.process(data, config)
         # label format

@@ -1,7 +1,7 @@
 import tensorflow as tf
 import layers
 from network import Generator
-from network import Discriminator2 as Discriminator
+from network import Discriminator as Discriminator
 
 DATA_FORMAT = 'NCHW'
 
@@ -109,12 +109,22 @@ class Model:
         loss_key = 'DiscriminatorLoss'
         real_critic, real_domain_logit = self.discriminator(real, reuse=True)
         # WGAN lipschitz-penalty
-        def random_interpolate():
-            alpha = tf.random_uniform(shape=tf.shape(real), minval=0., maxval=1.)
-            differences = fake - real
-            interpolates = alpha * differences + real
-            return interpolates
-        inter = random_interpolate()
+        def random_interpolate(dragan=True):
+            shape = tf.shape(real)
+            batch_shape = shape * [1, 0, 0, 0] + [0, 1, 1, 1]
+            if dragan:
+                eps = tf.random_uniform(shape, minval=0., maxval=1.)
+                x_mean, x_var = tf.nn.moments(real, axes=[0, 1, 2, 3])
+                x_std = tf.sqrt(x_var)
+                noise = 0.5 * x_std * eps
+                alpha = tf.random_uniform(batch_shape, minval=-1., maxval=1.)
+                interpolated = tf.clip_by_value(real + alpha * noise, -1., 1.)
+            else:
+                alpha = tf.random_uniform(batch_shape, minval=0., maxval=1.)
+                differences = fake - real
+                interpolated = alpha * differences + real
+            return interpolated
+        inter = random_interpolate(False)
         inter_critic, inter_domain = self.discriminator(inter, reuse=True)
         gradients = tf.gradients(inter_critic, [inter])[0]
         slopes = tf.norm(tf.layers.flatten(gradients), axis=1)
