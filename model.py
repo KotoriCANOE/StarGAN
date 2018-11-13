@@ -88,9 +88,14 @@ class Model:
             # reconstruction loss
             rec_loss = tf.losses.absolute_difference(inputs, reconstructs, weights=1.0,
                 loss_collection=None)
-            # rec_loss = 1 - layers.MS_SSIM(inputs + 1, reconstructs + 1, L=2,
-            #     weights=[0.1, 0.15, 0.2, 0.25, 0.3],
-            #     radius=10, sigma=4.0, data_format=self.data_format, one_dim=True)
+            '''
+            ssim_loss = tf.constant(0, tf.float32)
+            for _input, _recon in zip(tf.split(inputs, self.in_channels, axis=-3),
+                tf.split(reconstructs, self.in_channels, axis=-3)):
+                ssim_loss += 1 - layers.MS_SSIM(_input + 1, _recon + 1, L=2,
+                    data_format=self.data_format, one_dim=False)
+            rec_loss = ssim_loss
+            '''
             tf.losses.add_loss(rec_loss)
             update_ops.append(self.loss_summary('rec_loss', rec_loss, self.g_log_losses))
             # total loss
@@ -109,7 +114,7 @@ class Model:
         loss_key = 'DiscriminatorLoss'
         real_critic, real_domain_logit = self.discriminator(real, reuse=True)
         # WGAN lipschitz-penalty
-        def random_interpolate(dragan=True):
+        def random_interpolate(dragan=False):
             shape = tf.shape(real)
             batch_shape = shape * [1, 0, 0, 0] + [0, 1, 1, 1]
             if dragan:
@@ -118,9 +123,11 @@ class Model:
                 x_std = tf.sqrt(x_var)
                 noise = 0.5 * x_std * eps
                 alpha = tf.random_uniform(batch_shape, minval=-1., maxval=1.)
+                alpha.set_shape([None, self.in_channels, None, None])
                 interpolated = tf.clip_by_value(real + alpha * noise, -1., 1.)
             else:
                 alpha = tf.random_uniform(batch_shape, minval=0., maxval=1.)
+                alpha.set_shape([None, self.in_channels, None, None])
                 differences = fake - real
                 interpolated = alpha * differences + real
             return interpolated

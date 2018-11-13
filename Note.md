@@ -26,5 +26,14 @@ Generator - EBlock, DBlock: added InstanceNorm
 
 ## 06
 
+(unchanged)
 Generator - ResBlock: Swish-IN-Conv-Swish-IN-Conv-SEUnit
+
+## 07
+
+steps: 128000 => 512000
+
+## 08
+
+rec loss: MS-SSIM
 
