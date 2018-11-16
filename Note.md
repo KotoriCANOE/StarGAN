@@ -13,6 +13,7 @@ Discriminator: DenseNet-like
 ## 03
 
 WGAN-GP: fixed the shape of random generator in random interpolate
+restore to 256000 steps
 
 ## 04
 
@@ -35,5 +36,5 @@ steps: 128000 => 512000
 
 ## 08
 
-rec loss: MS-SSIM
-
+LR policy: SGDR + exponential
+steps: 511000

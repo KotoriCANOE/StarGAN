@@ -50,7 +50,7 @@ class Generator(GeneratorConfig):
         last = slim.conv2d(last, channels, kernel, stride, 'SAME', format,
             dilate, None, None, None, initializer, regularizer, biases,
             variables_collections=collections)
-        # skip connection
+        # residual connection
         last = layers.SEUnit(last, channels, format, collections)
         last += skip
         return last
@@ -224,11 +224,9 @@ class DiscriminatorConfig:
         # model parameters
         self.activation = ACTIVATION
         self.normalization = None
-        self.embed_size = 512
         # train parameters
         self.random_seed = 0
         self.weight_decay = 1e-6
-        self.dropout = 0
 
 class Discriminator(DiscriminatorConfig):
     def __init__(self, name='Discriminator', config=None):
@@ -483,97 +481,6 @@ class Discriminator2(DiscriminatorConfig):
                 critic_logit = slim.conv2d(critic_logit, 1, [7, 7], [1, 1], 'SAME', format,
                     1, None, None, weights_regularizer=regularizer)
             with tf.variable_scope('GlobalAveragePooling'):
-                last = tf.reduce_mean(last, [-2, -1] if format == 'NCHW' else [-3, -2])
-            with tf.variable_scope('Domain'):
-                last_channels = last.shape.as_list()[-1]
-                domain_logit = slim.fully_connected(last, last_channels, activation, None,
-                    weights_regularizer=regularizer)
-                domain_logit = slim.fully_connected(domain_logit, self.num_domains, None, None,
-                    weights_regularizer=regularizer)
-        # trainable/model/save/restore variables
-        self.tvars = tf.trainable_variables(self.name)
-        self.mvars = tf.model_variables(self.name)
-        self.mvars = [i for i in self.mvars if i not in self.tvars]
-        self.svars = list(set(self.tvars + self.mvars))
-        self.rvars = self.svars.copy()
-        return critic_logit, domain_logit
-
-# Discriminator 3
-
-class Discriminator3(DiscriminatorConfig):
-    def __init__(self, name='Discriminator', config=None):
-        super().__init__()
-        self.discriminator_model = None
-        self.name = name
-        # copy all the properties from config object
-        if config is not None:
-            self.__dict__.update(config.__dict__)
-
-    def ResBlock(self, last, channels, kernel=[3, 3], stride=[1, 1], biases=True, format=DATA_FORMAT,
-        dilate=1, activation=ACTIVATION, normalizer=None,
-        regularizer=None, collections=None):
-        biases = tf.initializers.zeros(self.dtype) if biases else None
-        initializer = tf.initializers.variance_scaling(
-            1.0, 'fan_in', 'normal', self.random_seed, self.dtype)
-        skip = last
-        # pre-activation
-        if normalizer: last = normalizer(last)
-        if activation: last = activation(last)
-        # convolution
-        last = slim.conv2d(last, channels, kernel, stride, 'SAME', format,
-            dilate, activation, normalizer, None, initializer, regularizer, biases,
-            variables_collections=collections)
-        last = slim.conv2d(last, channels, kernel, stride, 'SAME', format,
-            dilate, None, None, None, initializer, regularizer, biases,
-            variables_collections=collections)
-        # residual connection
-        last = layers.SEUnit(last, channels, format, collections)
-        last += skip
-        return last
-
-    def __call__(self, last, reuse=None):
-        # https://stackoverflow.com/a/33770771
-        # https://zhuanlan.zhihu.com/p/31308381
-        # pre-trained model
-        with open(self.discriminator_model, "rb") as fd:
-            graph_def = tf.GraphDef()
-            graph_def.ParseFromString(fd.read())
-        input_map = {'Input:0': last}
-        return_elements = ['Discriminator/EBlock_10/DenseConnection/concat:0']
-        rets = tf.import_graph_def(graph_def, name='',
-            input_map=input_map, return_elements=return_elements)
-        cnn_out, = rets
-        # parameters
-        format = self.data_format
-        # function objects
-        activation = self.activation
-        if self.normalization == 'Batch':
-            normalizer = lambda x: slim.batch_norm(x, 0.999, center=True, scale=True,
-                is_training=self.training, data_format=format, renorm=False)
-        elif self.normalization == 'Instance':
-            normalizer = lambda x: slim.instance_norm(x, center=True, scale=True, data_format=format)
-        elif self.normalization == 'Group':
-            normalizer = lambda x: (slim.group_norm(x, x.shape.as_list()[-3] // 16, -3, (-2, -1))
-                if format == 'NCHW' else slim.group_norm(x, x.shape.as_list()[-1] // 16, -1, (-3, -2)))
-        else:
-            normalizer = None
-        regularizer = slim.l2_regularizer(self.weight_decay) if self.weight_decay else None
-        # model scope
-        with tf.variable_scope(self.name, reuse=reuse):
-            # states
-            self.training = tf.Variable(False, trainable=False, name='training',
-                collections=[tf.GraphKeys.GLOBAL_VARIABLES, tf.GraphKeys.MODEL_VARIABLES])
-            # patch critic
-            with tf.variable_scope('PatchCritic'):
-                last = cnn_out
-                last_channels = last.shape.as_list()[-3]
-                critic_logit = self.ResBlock(last, last_channels, [3, 3], [1, 1], format=format,
-                    activation=activation, normalizer=normalizer, regularizer=regularizer)
-                critic_logit = slim.conv2d(critic_logit, 1, [7, 7], [1, 1], 'SAME', format,
-                    1, None, None, weights_regularizer=regularizer)
-            # domain classifier
-            with tf.variable_scope('GlobalAveragePooling'):
-                last = cnn_out
                 last = tf.reduce_mean(last, [-2, -1] if format == 'NCHW' else [-3, -2])
             with tf.variable_scope('Domain'):
                 last_channels = last.shape.as_list()[-1]
