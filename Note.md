@@ -36,5 +36,11 @@ steps: 128000 => 512000
 
 ## 08
 
+(unchanged)
 LR policy: SGDR + exponential
 steps: 511000
+
+## 09
+
+steps: 256000
+
