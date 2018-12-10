@@ -7,6 +7,7 @@ DATA_FORMAT = 'NCHW'
 
 class Model:
     def __init__(self, config=None):
+        self.gan_type = 'wgan'
         # format parameters
         self.dtype = tf.float32
         self.data_format = DATA_FORMAT
@@ -77,7 +78,7 @@ class Model:
         loss_key = 'GeneratorLoss'
         with tf.variable_scope(loss_key):
             # adversarial loss
-            adv_loss = -tf.reduce_mean(critic_logit)
+            adv_loss = layers.GeneratorLoss(critic_logit, self.gan_type)
             tf.losses.add_loss(adv_loss)
             update_ops.append(self.loss_summary('adv_loss', adv_loss, self.g_log_losses))
             # domain classification loss
@@ -108,16 +109,17 @@ class Model:
             with tf.control_dependencies(update_ops):
                 self.g_losses_acc = tf.no_op('accumulator')
 
-    def build_d_loss(self, real, real_domain_label, fake, fake_critic):
+    def build_d_loss(self, real, real_domain_label, fake, fake_critic, dragan=False):
         self.d_log_losses = []
         update_ops = []
         loss_key = 'DiscriminatorLoss'
         real_critic, real_domain_logit = self.discriminator(real, reuse=True)
         # WGAN lipschitz-penalty
-        def random_interpolate(dragan=False):
+        use_gp = 'wgan' in self.gan_type or self.gan_type == 'dragan'
+        def random_interpolate(gan_type):
             shape = tf.shape(real)
             batch_shape = shape * [1, 0, 0, 0] + [0, 1, 1, 1]
-            if dragan:
+            if gan_type == 'dragan':
                 eps = tf.random_uniform(shape, minval=0., maxval=1.)
                 x_mean, x_var = tf.nn.moments(real, axes=[0, 1, 2, 3])
                 x_std = tf.sqrt(x_var)
@@ -131,24 +133,24 @@ class Model:
                 differences = fake - real
                 interpolated = alpha * differences + real
             return interpolated
-        inter = random_interpolate(False)
-        inter_critic, inter_domain = self.discriminator(inter, reuse=True)
-        gradients = tf.gradients(inter_critic, [inter])[0]
-        slopes = tf.norm(tf.layers.flatten(gradients), axis=1)
+        if use_gp:
+            inter = random_interpolate(self.gan_type)
+            inter_critic, inter_domain = self.discriminator(inter, reuse=True)
+            gradients = tf.gradients(inter_critic, [inter])[0]
+            slopes = tf.norm(tf.layers.flatten(gradients), axis=1)
         with tf.variable_scope(loss_key):
             # adversarial loss
-            d_real = tf.reduce_mean(real_critic)
-            d_fake = tf.reduce_mean(fake_critic)
-            adv_loss = d_fake - d_real
+            adv_loss = layers.DiscriminatorLoss(real_critic, fake_critic, self.gan_type)
             tf.losses.add_loss(adv_loss)
             update_ops.append(self.loss_summary('adv_loss', adv_loss, self.d_log_losses))
             # WGAN lipschitz-penalty
-            lambda_gp = 10
-            K = 1.0
-            gradient_penalty = tf.reduce_mean(tf.square(slopes - K))
-            gp_loss = lambda_gp * gradient_penalty
-            tf.losses.add_loss(gp_loss)
-            update_ops.append(self.loss_summary('gp_loss', gp_loss, self.d_log_losses))
+            if use_gp:
+                lambda_gp = 10
+                K = 1.0
+                gradient_penalty = tf.reduce_mean(tf.square(slopes - K))
+                gp_loss = lambda_gp * gradient_penalty
+                tf.losses.add_loss(gp_loss)
+                update_ops.append(self.loss_summary('gp_loss', gp_loss, self.d_log_losses))
             # domain classification loss
             cls_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                 labels=tf.cast(real_domain_label, tf.float32), logits=real_domain_logit))
