@@ -109,7 +109,7 @@ class Model:
             with tf.control_dependencies(update_ops):
                 self.g_losses_acc = tf.no_op('accumulator')
 
-    def build_d_loss(self, real, real_domain_label, fake, fake_critic, dragan=False):
+    def build_d_loss(self, real, real_domain_label, fake, fake_critic):
         self.d_log_losses = []
         update_ops = []
         loss_key = 'DiscriminatorLoss'

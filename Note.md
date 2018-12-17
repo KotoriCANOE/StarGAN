@@ -44,3 +44,9 @@ steps: 511000
 
 steps: 256000
 
+## 10
+
+(unchanged)
+adv loss: WGAN-GP => DRAGAN
+- mode collapse
+
