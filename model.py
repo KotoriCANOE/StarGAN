@@ -11,6 +11,7 @@ class Model:
         # format parameters
         self.dtype = tf.float32
         self.data_format = DATA_FORMAT
+        self.data_format_k = 'channels_first' if self.data_format == 'NCHW' else 'channels_last'
         self.in_channels = 3
         self.num_domains = None
         # collections
@@ -26,6 +27,7 @@ class Model:
         self.input_shape[-3 if self.data_format == 'NCHW' else -1] = self.in_channels
         self.output_shape = self.input_shape
         self.domain_shape = [None, self.num_domains]
+        self.domain_dtype = tf.int64
 
     def build_model(self, inputs=None, target_domains=None):
         # inputs
@@ -36,7 +38,7 @@ class Model:
             self.inputs.set_shape(self.input_shape)
         # target domains
         if target_domains is None:
-            self.target_domains = tf.placeholder(tf.int64, self.domain_shape, name='Domain')
+            self.target_domains = tf.placeholder(self.domain_dtype, self.domain_shape, name='Domain')
         else:
             self.target_domains = tf.identity(target_domains, name='Domain')
             self.target_domains.set_shape(self.domain_shape)
@@ -55,7 +57,7 @@ class Model:
     def build_train(self, inputs=None, origin_domains=None, target_domains=None):
         # origin domains
         if origin_domains is None:
-            self.origin_domains = tf.placeholder(tf.int64, self.domain_shape, name='OriginDomain')
+            self.origin_domains = tf.placeholder(self.domain_dtype, self.domain_shape, name='OriginDomain')
         else:
             self.origin_domains = tf.identity(origin_domains, name='OriginDomain')
             self.origin_domains.set_shape(self.domain_shape)
@@ -133,24 +135,31 @@ class Model:
                 differences = fake - real
                 interpolated = alpha * differences + real
             return interpolated
-        if use_gp:
+        if use_gp and self.gan_type != 'wgan-div':
             inter = random_interpolate(self.gan_type)
             inter_critic, inter_domain = self.discriminator(inter, reuse=True)
-            gradients = tf.gradients(inter_critic, [inter])[0]
-            slopes = tf.norm(tf.layers.flatten(gradients), axis=1)
         with tf.variable_scope(loss_key):
             # adversarial loss
             adv_loss = layers.DiscriminatorLoss(real_critic, fake_critic, self.gan_type)
             tf.losses.add_loss(adv_loss)
             update_ops.append(self.loss_summary('adv_loss', adv_loss, self.d_log_losses))
-            # WGAN lipschitz-penalty
+            # gradient loss
             if use_gp:
-                lambda_gp = 10
-                K = 1.0
-                gradient_penalty = tf.reduce_mean(tf.square(slopes - K))
-                gp_loss = lambda_gp * gradient_penalty
-                tf.losses.add_loss(gp_loss)
-                update_ops.append(self.loss_summary('gp_loss', gp_loss, self.d_log_losses))
+                flatten = tf.layers.Flatten(self.data_format_k)
+                if self.gan_type == 'wgan-div':
+                    k = 2
+                    p = 6
+                    real_grad = tf.gradients(real_critic, [real])[0]
+                    real_grad_norm = tf.reduce_sum(tf.square(flatten(real_grad)), axis=1) ** (p / 2)
+                    grad_loss = tf.reduce_mean(real_grad_norm) * k
+                else:
+                    lambda_gp = 10
+                    K = 1.0
+                    inter_grad = tf.gradients(inter_critic, [inter])[0]
+                    inter_grad_norm = tf.norm(flatten(inter_grad), axis=1)
+                    grad_loss = lambda_gp * tf.reduce_mean(tf.square(inter_grad_norm - K))
+                tf.losses.add_loss(grad_loss)
+                update_ops.append(self.loss_summary('grad_loss', grad_loss, self.d_log_losses))
             # domain classification loss
             cls_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
                 labels=tf.cast(real_domain_label, tf.float32), logits=real_domain_logit))
@@ -171,7 +180,7 @@ class Model:
         # dependencies to be updated
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, 'Generator')
         # learning rate
-        lr_base = 1e-4
+        lr_base = 2e-5
         lr = 2 * lr_base / self.config.max_steps * (
             1.0 * self.config.max_steps - tf.cast(global_step, tf.float32))
         lr = tf.clip_by_value(lr, lr_base * 0, lr_base)
@@ -199,7 +208,7 @@ class Model:
         # dependencies to be updated
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, 'Discriminator')
         # learning rate
-        lr_base = 1e-4
+        lr_base = 2e-5
         lr = 2 * lr_base / self.config.max_steps * (
             1.0 * self.config.max_steps - tf.cast(global_step, tf.float32))
         lr = tf.clip_by_value(lr, lr_base * 0, lr_base)

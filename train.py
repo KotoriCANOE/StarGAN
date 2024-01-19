@@ -1,7 +1,6 @@
 import tensorflow as tf
 import numpy as np
 import os
-import librosa
 from utils import bool_argument, eprint, reset_random, create_session
 from data import DataCelebA as Data
 from model import Model
@@ -186,7 +185,8 @@ class Train:
             latest_ckpt = tf.train.latest_checkpoint(self.pretrain_dir, 'checkpoint')
             self.saver_pt.restore(sess, latest_ckpt)
         # profiler
-        profile_offset = 100 + self.log_frequency // 2
+        # profile_offset = 100 + self.log_frequency // 2
+        profile_offset = -1
         profile_step = 10000
         builder = tf.profiler.ProfileOptionBuilder
         profiler = tf.profiler.Profiler(sess.graph)

@@ -51,7 +51,7 @@ class Generator(GeneratorConfig):
             dilate, None, None, None, initializer, regularizer, biases,
             variables_collections=collections)
         # residual connection
-        last = layers.SEUnit(last, channels, format, collections)
+        last = layers.SEUnit(last, channels, format, regularizer, collections)
         last += skip
         return last
 
@@ -254,7 +254,7 @@ class Discriminator(DiscriminatorConfig):
             dilate, None, None, None, initializer, regularizer, biases,
             variables_collections=collections)
         # residual connection
-        last = layers.SEUnit(last, channels, format, collections)
+        last = layers.SEUnit(last, channels, format, regularizer, collections)
         last += skip
         return last
 
@@ -288,7 +288,7 @@ class Discriminator(DiscriminatorConfig):
                     regularizer=regularizer, collections=collections)
         # dense connection
         with tf.variable_scope('DenseConnection'):
-            last = layers.SEUnit(last, channels, format, collections)
+            last = layers.SEUnit(last, channels, format, regularizer, collections)
             if stride != 1 or stride != [1, 1]:
                 pool_stride = [1, 1] + stride if format == 'NCHW' else [1] + stride + [1]
                 skip = tf.nn.avg_pool(skip, pool_stride, pool_stride, 'SAME', format)
@@ -390,7 +390,7 @@ class Discriminator2(DiscriminatorConfig):
             dilate, None, None, None, initializer, regularizer, biases,
             variables_collections=collections)
         # residual connection
-        last = layers.SEUnit(last, channels, format, collections)
+        last = layers.SEUnit(last, channels, format, regularizer, collections)
         last += skip
         return last
 

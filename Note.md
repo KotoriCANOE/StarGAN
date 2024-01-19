@@ -50,3 +50,27 @@ steps: 256000
 adv loss: WGAN-GP => DRAGAN
 - mode collapse
 
+## 11
+
+steps: 256000
+batch size: 8
+adv loss: WGAN-GP => WGAN-div
+
+## 12
+
+steps: 256000
+batch size: 12
+adv loss: WGAN-div
+
+## 13
+
+steps: 256000
+batch size: 12
+adv loss: WGAN-GP
+
+## 14
+
+steps: 128000
+batch size: 12
+adv loss: WGAN-div
+LR: 0=2e-5, 64000=2e-5, 128000=0
